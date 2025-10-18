@@ -34,11 +34,12 @@ QA_SYSTEM_PROMPT = (
     "Context:\n{context}"
 )
 
-# NOTE: This function IS NOT CACHED to avoid the UnhashableParamError
+# app.py (Corrected get_retrieval_rag_chain function)
+
+# Note: This function is NOT cached.
 def get_retrieval_rag_chain(llm, vector_store):
     """
     Builds the complete RAG chain using the fundamental LCEL pipe (|) operator.
-    It takes the vector_store and derives a fresh retriever for the chain.
     """
     
     # 1. Define the retriever component
@@ -54,13 +55,13 @@ def get_retrieval_rag_chain(llm, vector_store):
     
     # 3. Define the chain that performs retrieval, combines context, and generates the answer
     rag_chain = (
-        # Step A: Pass input to retriever and assign results to 'context' key
-        RunnablePassthrough.assign(context=retriever) 
-        # Step B: Pass the combined dictionary to the prompt
+        # --- FIX IS HERE ---
+        # We assign the context key by first extracting the input string (x["input"])
+        # and then piping that string into the retriever.
+        RunnablePassthrough.assign(context=(lambda x: retriever.invoke(x["input"])))
+        # The prompt step receives the full dictionary: {'input': 'question', 'context': [docs]}
         | prompt 
-        # Step C: Send the finalized prompt to the LLM
         | llm 
-        # Step D: Parse the final output into a clean string
         | StrOutputParser()
     )
     
