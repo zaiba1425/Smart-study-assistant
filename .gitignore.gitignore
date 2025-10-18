@@ -1,0 +1,27 @@
+.gitignore
+
+Python virtual environment files
+
+pycache/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+*.sqlite
+
+OS generated files
+
+.DS_Store
+Thumbs.db
+
+Conda environment activation scripts (CRUCIAL)
+
+**/*activate.bat
+**/*activate.sh
+
+Files created by the Streamlit application
+
+tmp/
+*.tmp
+*.log
