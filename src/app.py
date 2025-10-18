@@ -1,4 +1,5 @@
 # app.py
+
 import streamlit as st
 import os
 import tempfile
@@ -17,6 +18,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 # --- 1. RAG Chain Setup ---
 
 # Initialize LLM (relies on GEMINI_API_KEY environment variable)
+# NOTE: This function is cached because the LLM object is stable.
 @st.cache_resource(show_spinner=False)
 def get_llm():
     """Initializes and caches the Google Gemini LLM."""
@@ -32,14 +34,17 @@ QA_SYSTEM_PROMPT = (
     "Context:\n{context}"
 )
 
-
-@st.cache_resource(show_spinner=False)
-def get_retrieval_rag_chain(llm, retriever):
+# NOTE: This function IS NOT CACHED to avoid the UnhashableParamError
+def get_retrieval_rag_chain(llm, vector_store):
     """
     Builds the complete RAG chain using the fundamental LCEL pipe (|) operator.
+    It takes the vector_store and derives a fresh retriever for the chain.
     """
     
-    # 1. Define the prompt template
+    # 1. Define the retriever component
+    retriever = vector_store.as_retriever(search_kwargs={"k": 4})
+    
+    # 2. Define the prompt template
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", QA_SYSTEM_PROMPT),
@@ -47,7 +52,7 @@ def get_retrieval_rag_chain(llm, retriever):
         ]
     )
     
-    # 2. Define the chain that performs retrieval, combines context, and generates the answer
+    # 3. Define the chain that performs retrieval, combines context, and generates the answer
     rag_chain = (
         # Step A: Pass input to retriever and assign results to 'context' key
         RunnablePassthrough.assign(context=retriever) 
@@ -72,16 +77,14 @@ def main():
     # --- Authentication Check and Setup ---
     # Check for API Key in environment
     if "GEMINI_API_KEY" not in os.environ:
-        # Fallback check for GOOGLE_API_KEY if primary name is missing
         if "GOOGLE_API_KEY" in os.environ:
             os.environ["GEMINI_API_KEY"] = os.environ["GOOGLE_API_KEY"]
         else:
-            st.error("🚨 **GEMINI_API_KEY** environment variable not set. Please set your key in the Anaconda Prompt.")
+            st.error("🚨 **GEMINI_API_KEY** environment variable not set. Please set your key in the secrets file.")
             return
 
     # CRITICAL: Force load the key right after the check to prevent the DefaultCredentialsError
     os.environ["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
-
 
     # Initialize session state for data storage
     if "study_docs" not in st.session_state:
@@ -89,6 +92,7 @@ def main():
     if "vector_store" not in st.session_state:
         st.session_state.vector_store = None
         
+    # The LLM is retrieved from cache here
     llm = get_llm()
 
 
@@ -123,7 +127,7 @@ def main():
                         
             st.session_state.study_docs = new_docs
             
-            # Build Vector Store from the processed documents
+            # Build Vector Store from the processed documents (This function is cached in retriever.py)
             if st.session_state.study_docs:
                 st.session_state.vector_store = build_vector_store(st.session_state.study_docs)
                 st.success(f"✅ Successfully processed {len(st.session_state.study_docs)} documents!")
@@ -150,8 +154,9 @@ def main():
         
         if user_question:
             
-            retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 4})
-            rag_chain = get_retrieval_rag_chain(llm, retriever)
+            # 1. Build a new RAG chain (not cached)
+            # We pass the cached LLM and the cached vector store
+            rag_chain = get_retrieval_rag_chain(llm, st.session_state.vector_store)
             
             # 2. Invoke the chain
             with st.spinner("Generating comprehensive answer..."):
@@ -159,7 +164,8 @@ def main():
                     # Invoke the LCEL chain with the user's question. 
                     response = rag_chain.invoke({"input": user_question}) 
                     
-                    # Manually retrieve the chunks for source display
+                    # Manually retrieve the chunks for source display (for simplicity)
+                    retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 4})
                     retrieved_docs = retriever.invoke(user_question)
 
                 except Exception as e:
