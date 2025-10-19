@@ -1,23 +1,25 @@
-import streamlit as st # ADDED: Required for @st.cache_resource decorator
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_text_splitters import RecursiveCharacterTextSplitter # Previously fixed import
-from langchain_core.documents import Document # Previously fixed import
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+import streamlit as st
+from langchain_google_genai import GoogleGenAIEmbeddings
+from langchain_community.vectorstores import Chroma # CHANGED: Import ChromaDB for stability
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+
+# Model: Use Google's hosted embedding model (requires GEMINI_API_KEY)
+EMBEDDING_MODEL_NAME = "text-embedding-004" 
 
 # Global embeddings instance (only load once)
 @st.cache_resource(show_spinner=False)
 def get_embeddings():
-    """Initializes and caches the local HuggingFace embeddings model."""
-    # Note: 'sentence-transformers' must be installed for this to work
-    return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+    """Initializes and caches the Google hosted embeddings model."""
+    # This automatically uses the GEMINI_API_KEY saved in Streamlit secrets
+    return GoogleGenAIEmbeddings(model=EMBEDDING_MODEL_NAME)
 
-def build_vector_store(documents: list[Document]) -> FAISS:
+# CHANGE: Function signature now uses Chroma
+def build_vector_store(documents: list[Document]) -> Chroma: 
     """
     documents: list of LangChain Document objects
-    returns: FAISS vector store
+    returns: ChromaDB vector store
     """
-    # Create embeddings object
     embeddings = get_embeddings()
 
     # Split documents into chunks for RAG
@@ -27,20 +29,17 @@ def build_vector_store(documents: list[Document]) -> FAISS:
         separators=["\n\n", "\n", " ", ""]
     )
     
-    # Split the list of LangChain documents
     docs = text_splitter.split_documents(documents)
 
-    # Build FAISS vector store from the chunks
-    vector_store = FAISS.from_documents(docs, embeddings)
+    # CHANGED: Build Chroma vector store instead of FAISS
+    vector_store = Chroma.from_documents(docs, embeddings) 
     return vector_store
 
-def query_vector_store(vector_store: FAISS, query: str, k: int = 4) -> list[Document]:
+# CHANGE: Function signature now uses Chroma
+def query_vector_store(vector_store: Chroma, query: str, k: int = 4) -> list[Document]:
     """
-    vector_store: FAISS vector store
-    query: string
-    k: number of results (chunks) to retrieve
-    returns: list of retrieved Document chunks
+    Queries the vector store for relevant documents.
     """
-    # The FAISS store already has the embeddings linked, no need to pass them again
+    # Chroma uses the same similarity_search method
     results = vector_store.similarity_search(query, k=k)
     return results
